@@ -1,9 +1,0 @@
-{
-  "name": "taiwan-stock-ai",
-  "version": "1.0.0",
-  "description": "台股 AI 分析工具 — 整合 Yahoo Finance 即時報價 + Claude AI 分析",
-  "private": true,
-  "engines": {
-    "node": ">=18"
-  }
-}

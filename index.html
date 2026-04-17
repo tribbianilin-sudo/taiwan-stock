@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股 AI 分析</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans TC', -apple-system, sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+  .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* Header */
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .logo { font-size: 16px; font-weight: 700; color: #f0883e; letter-spacing: 0.5px; white-space: nowrap; }
+  .badge { font-size: 10px; background: #f0883e22; color: #f0883e; border: 1px solid #f0883e44; padding: 2px 6px; border-radius: 4px; }
+  .search-wrap { flex: 1; max-width: 400px; position: relative; }
+  .search-input { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 8px 14px 8px 36px; color: #e6edf3; font-size: 14px; outline: none; transition: border-color 0.2s; }
+  .search-input:focus { border-color: #58a6ff; }
+  .search-input::placeholder { color: #6e7681; }
+  .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #6e7681; font-size: 14px; }
+  .search-btn { background: #238636; border: 1px solid #2ea043; color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+  .search-btn:hover { background: #2ea043; }
+  .search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .settings-btn { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .settings-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .key-modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 9999; }
+  .key-card { width: min(92vw, 760px); background: #f2f5f1; color: #2f5d34; border-radius: 22px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .key-help { background: #dfeadf; border: 2px solid #87c08a; border-radius: 18px; padding: 20px 24px; line-height: 1.8; margin-bottom: 22px; font-size: 15px; }
+  .key-help a { color: #348b43; font-weight: 700; }
+  .key-label { font-size: 16px; margin: 12px 0 10px; color: #45674a; font-weight: 700; }
+  .key-input { width: 100%; background: #eef2ee; border: 2px solid #d0d7d0; border-radius: 18px; padding: 16px 18px; font-size: 18px; color: #1f2a1f; outline: none; }
+  .key-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  .key-btn { border: none; border-radius: 18px; padding: 18px 20px; font-size: 18px; cursor: pointer; font-weight: 700; }
+  .key-btn.secondary { background: #fff; border: 2px solid #d0d7d0; color: #5a6b5d; }
+  .key-btn.primary { background: #53a08e; color: #fff; }
+  .key-status { font-size: 11px; color: #6e7681; white-space: nowrap; }
+
+  /* Main */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar { width: 180px; background: #161b22; border-right: 1px solid #30363d; padding: 16px 0; flex-shrink: 0; overflow-y: auto; }
+  .sidebar-title { font-size: 11px; color: #6e7681; padding: 0 16px 8px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .sidebar-item { padding: 8px 16px; font-size: 13px; cursor: pointer; color: #8b949e; border-left: 2px solid transparent; transition: all 0.15s; }
+  .sidebar-item:hover { color: #e6edf3; background: #21262d; }
+  .sidebar-item.active { color: #f0883e; border-left-color: #f0883e; background: #f0883e10; }
+  .sidebar-code { font-size: 12px; font-weight: 600; }
+  .sidebar-name { font-size: 11px; color: #6e7681; margin-top: 1px; }
+  .sidebar-price { font-size: 11px; margin-top: 2px; font-weight: 600; }
+  .sidebar-price.up { color: #3fb950; }
+  .sidebar-price.down { color: #f85149; }
+
+  /* Content */
+  .content { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #6e7681; text-align: center; min-height: 60vh; }
+  .empty-icon { font-size: 48px; opacity: 0.5; }
+  .empty-title { font-size: 18px; color: #8b949e; }
+  .empty-sub { font-size: 13px; max-width: 340px; line-height: 1.6; }
+  .empty-hint { font-size: 12px; margin-top: 8px; color: #f0883e88; }
+
+  /* Live price badge */
+  .live-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #3fb950; background: #3fb95015; border: 1px solid #3fb95033; padding: 3px 8px; border-radius: 4px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; animation: blink 1.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .live-badge.stale { color: #f0883e; background: #f0883e15; border-color: #f0883e33; }
+  .live-badge.stale .live-dot { background: #f0883e; }
+  .refresh-btn { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; margin-left: 4px; }
+  .refresh-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .auto-refresh-label { font-size: 11px; color: #6e7681; }
+
+  /* Stock header */
+  .stock-header { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .stock-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .stock-code { font-size: 20px; font-weight: 700; }
+  .stock-name-cn { font-size: 18px; color: #8b949e; }
+  .price-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .stock-price { font-size: 28px; font-weight: 700; transition: color 0.4s; }
+  .stock-price.flash-up { color: #3fb950 !important; }
+  .stock-price.flash-down { color: #f85149 !important; }
+  .stock-change { font-size: 14px; padding: 3px 8px; border-radius: 4px; }
+  .change-up { color: #3fb950; background: #3fb95015; }
+  .change-down { color: #f85149; background: #f8514915; }
+  .price-detail { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+  .price-detail-item { font-size: 12px; color: #6e7681; }
+  .price-detail-item span { color: #c9d1d9; }
+
+  /* Time filters */
+  .time-filters { display: flex; gap: 4px; flex-wrap: wrap; }
+  .time-btn { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .time-btn.active { background: #f0883e; border-color: #f0883e; color: #fff; }
+  .time-btn:hover:not(.active) { border-color: #6e7681; color: #e6edf3; }
+
+  /* Sparkline */
+  .sparkline-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .sparkline-svg { overflow: visible; }
+
+  /* Prediction card */
+  .prediction-card { border: 2px solid; border-radius: 12px; padding: 24px; text-align: center; }
+  .prediction-card.up { border-color: #3fb95066; background: linear-gradient(135deg, #0d2f1a 0%, #0d1117 100%); }
+  .prediction-card.down { border-color: #f8514966; background: linear-gradient(135deg, #2f0d0d 0%, #0d1117 100%); }
+  .prediction-card.neutral { border-color: #f0883e66; background: linear-gradient(135deg, #2f1a0d 0%, #0d1117 100%); }
+  .confidence-ring { position: relative; width: 120px; height: 120px; margin: 0 auto 16px; }
+  .confidence-svg { width: 120px; height: 120px; transform: rotate(-90deg); }
+  .confidence-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .confidence-pct { font-size: 22px; font-weight: 700; }
+  .confidence-label { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .prediction-period { font-size: 13px; color: #8b949e; margin-bottom: 8px; }
+  .prediction-verdict { font-size: 36px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .verdict-up { color: #3fb950; }
+  .verdict-down { color: #f85149; }
+  .verdict-neutral { color: #f0883e; }
+  .prediction-detail { font-size: 13px; color: #8b949e; margin-top: 8px; }
+
+  /* AI Panel */
+  .ai-panel { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; }
+  .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .ai-dot { width: 8px; height: 8px; border-radius: 50%; background: #58a6ff; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .ai-title { font-size: 14px; font-weight: 600; color: #58a6ff; }
+  .ai-model { font-size: 11px; color: #6e7681; background: #21262d; padding: 2px 8px; border-radius: 4px; margin-left: auto; }
+  .ai-content { font-size: 14px; line-height: 1.8; color: #c9d1d9; }
+  .ai-content p { margin-bottom: 12px; }
+  .ai-content strong { color: #e6edf3; font-weight: 600; }
+  .ai-sources { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+  .source-tag { font-size: 11px; padding: 4px 10px; border-radius: 20px; border: 1px solid #30363d; color: #8b949e; }
+
+  /* Panels grid */
+  .panels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .panels-grid { grid-template-columns: 1fr; } }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; }
+  .panel-title { font-size: 13px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+
+  /* Fundamentals */
+  .fund-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+  .fund-row:last-child { border-bottom: none; }
+  .fund-label { color: #8b949e; }
+  .fund-value { font-weight: 600; color: #e6edf3; }
+  .fund-value.live { color: #58a6ff; }
+
+  /* Technical indicators */
+  .tech-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tech-item { background: #0d1117; border-radius: 8px; padding: 10px 12px; text-align: center; }
+  .tech-name { font-size: 11px; color: #6e7681; margin-bottom: 4px; }
+  .tech-val { font-size: 14px; font-weight: 600; }
+  .tech-up { color: #3fb950; }
+  .tech-down { color: #f85149; }
+  .tech-neutral { color: #f0883e; }
+
+  /* News */
+  .news-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #21262d; }
+  .news-item:last-child { border-bottom: none; }
+  .news-num { color: #6e7681; font-size: 12px; min-width: 16px; padding-top: 1px; }
+  .news-title { font-size: 13px; color: #c9d1d9; line-height: 1.5; }
+  .news-meta { font-size: 11px; color: #6e7681; margin-top: 3px; }
+
+  /* Loading / Error */
+  .loading { text-align: center; padding: 80px 40px; color: #6e7681; }
+  .spinner { width: 32px; height: 32px; border: 2px solid #30363d; border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-msg { color: #f85149; font-size: 14px; padding: 20px; background: #f8514910; border-radius: 8px; border: 1px solid #f8514930; }
+  .warn-msg { color: #f0883e; font-size: 12px; padding: 10px 14px; background: #f0883e10; border-radius: 6px; border: 1px solid #f0883e30; margin-bottom: 12px; }
+
+  /* Disclaimer */
+  .disclaimer { font-size: 11px; color: #6e7681; text-align: center; padding: 8px 20px; border-top: 1px solid #21262d; background: #161b22; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="logo">台股預測 <span class="badge">AI 版</span></div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" type="text" id="searchInput" placeholder="輸入股票代號或名稱，例如：2330、台積電" />
+    </div>
+    <button class="settings-btn" onclick="showKeyModal()">🔑 Key</button><span class="key-status" id="keyStatus">Key：未設定</span><button class="search-btn" id="searchBtn" onclick="analyzeStock()">分析 ↗</button>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-title">常用股票</div>
+      <div class="sidebar-item" id="sb-2330" onclick="quickSearch('2330','台積電',this)">
+        <div class="sidebar-code">2330</div><div class="sidebar-name">台積電</div>
+        <div class="sidebar-price" id="sbp-2330">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-2317" onclick="quickSearch('2317','鴻海',this)">
+        <div class="sidebar-code">2317</div><div class="sidebar-name">鴻海</div>
+        <div class="sidebar-price" id="sbp-2317">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-2454" onclick="quickSearch('2454','聯發科',this)">
+        <div class="sidebar-code">2454</div><div class="sidebar-name">聯發科</div>
+        <div class="sidebar-price" id="sbp-2454">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-0050" onclick="quickSearch('0050','元大台灣50',this)">
+        <div class="sidebar-code">0050</div><div class="sidebar-name">元大台灣50</div>
+        <div class="sidebar-price" id="sbp-0050">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-2303" onclick="quickSearch('2303','聯電',this)">
+        <div class="sidebar-code">2303</div><div class="sidebar-name">聯電</div>
+        <div class="sidebar-price" id="sbp-2303">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-2412" onclick="quickSearch('2412','中華電',this)">
+        <div class="sidebar-code">2412</div><div class="sidebar-name">中華電</div>
+        <div class="sidebar-price" id="sbp-2412">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-6505" onclick="quickSearch('6505','台塑化',this)">
+        <div class="sidebar-code">6505</div><div class="sidebar-name">台塑化</div>
+        <div class="sidebar-price" id="sbp-6505">—</div>
+      </div>
+      <div class="sidebar-item" id="sb-2882" onclick="quickSearch('2882','國泰金',this)">
+        <div class="sidebar-code">2882</div><div class="sidebar-name">國泰金</div>
+        <div class="sidebar-price" id="sbp-2882">—</div>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <div class="empty-state">
+        <div class="empty-icon">📈</div>
+        <div class="empty-title">台股 AI 智慧分析</div>
+        <div class="empty-sub">輸入股票代號或名稱，系統將從 Yahoo Finance 取得即時報價，並由 AI 進行技術面、基本面與市場情緒綜合分析</div>
+        <div class="empty-hint">⚠️ 本工具僅供研究參考，不構成投資建議</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="disclaimer">⚠️ 本工具由 AI 生成，不構成投資建議。股價來源：Yahoo Finance。投資有風險，請謹慎評估。</div>
+</div>
+
+
+<div class="key-modal" id="keyModal">
+  <div class="key-card">
+    <div class="key-help">
+      ✅ <strong>使用 Google Gemini API（前端直連版）</strong><br>
+      1. 前往 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a><br>
+      2. 登入 Google 帳號並建立 API Key<br>
+      3. 貼到下方後先按「測試連線」，成功再按「儲存」
+    </div>
+    <div class="key-label">🔑 Gemini API Key：</div>
+    <input class="key-input" id="geminiKeyInput" placeholder="貼上你的 Gemini API Key" />
+    <div class="key-actions">
+      <button class="key-btn secondary" id="testKeyBtn" onclick="testGeminiKey()">🔗 測試連線</button>
+      <button class="key-btn primary" onclick="saveGeminiKey()">儲存</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ─── 狀態 ───────────────────────────────────────
+let currentPeriod = '1個月';
+let currentStock = null;
+let currentAiData = null;
+let liveSymbol = null;
+let refreshTimer = null;
+const REFRESH_INTERVAL = 60000;
+const SIDEBAR_STOCKS = ['2330','2317','2454','0050','2303','2412','6505','2882'];
+const GEMINI_KEY_STORAGE = 'gemini_api_key';
+const NAME_TO_CODE = {
+  '台積電':'2330','鴻海':'2317','聯發科':'2454','元大台灣50':'0050',
+  '聯電':'2303','中華電':'2412','台塑化':'6505','國泰金':'2882'
+};
+
+function toYahooSymbol(code) {
+  const trimmed = code.trim().replace(/\.TW[O]?$/i, '');
+  return trimmed + '.TW';
+}
+function formatPrice(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function getGeminiKey() {
+  return localStorage.getItem(GEMINI_KEY_STORAGE) || '';
+}
+function setGeminiKey(v) {
+  localStorage.setItem(GEMINI_KEY_STORAGE, v.trim());
+}
+function showKeyModal() {
+  document.getElementById('keyModal').style.display = 'flex';
+  document.getElementById('geminiKeyInput').value = getGeminiKey();
+}
+function hideKeyModal() {
+  document.getElementById('keyModal').style.display = 'none';
+}
+function maskedKey(v) {
+  if (!v) return '未設定';
+  if (v.length <= 8) return '已設定';
+  return v.slice(0, 4) + '...' + v.slice(-4);
+}
+function refreshKeyBadge() {
+  const el = document.getElementById('keyStatus');
+  if (el) el.textContent = 'Key：' + maskedKey(getGeminiKey());
+}
+async function testGeminiKey() {
+  const key = document.getElementById('geminiKeyInput').value.trim();
+  if (!key) return alert('請先貼上 Gemini API Key');
+  const btn = document.getElementById('testKeyBtn');
+  const old = btn.textContent;
+  btn.textContent = '測試中...';
+  btn.disabled = true;
+  try {
+    const result = await callGeminiDirect('請只回傳 {"ok":true}', 50, key);
+    alert('測試成功：' + result.model);
+  } catch (e) {
+    alert('測試失敗：' + e.message);
+  } finally {
+    btn.textContent = old;
+    btn.disabled = false;
+  }
+}
+function saveGeminiKey() {
+  const key = document.getElementById('geminiKeyInput').value.trim();
+  if (!key) return alert('請先貼上 Gemini API Key');
+  setGeminiKey(key);
+  refreshKeyBadge();
+  hideKeyModal();
+}
+
+window.addEventListener('load', () => {
+  loadSidebarPrices();
+  refreshKeyBadge();
+  if (!getGeminiKey()) showKeyModal();
+});
+document.getElementById('searchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyzeStock();
+});
+
+async function loadSidebarPrices() {
+  for (const code of SIDEBAR_STOCKS) {
+    fetchLivePrice(toYahooSymbol(code)).then(data => {
+      if (!data) return;
+      const el = document.getElementById('sbp-' + code);
+      if (!el) return;
+      const isUp = data.change >= 0;
+      el.textContent = formatPrice(data.price);
+      el.className = 'sidebar-price ' + (isUp ? 'up' : 'down');
+    }).catch(() => {});
+  }
+}
+
+async function fetchLivePrice(symbol) {
+  const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+async function callGeminiDirect(prompt, maxTokens = 4096, apiKeyOverride = null, responseSchema = null) {
+  const apiKey = apiKeyOverride || getGeminiKey();
+  if (!apiKey) throw new Error('尚未設定 Gemini API Key');
+
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+  const errors = [];
+
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: maxTokens,
+            responseMimeType: "application/json",
+            ...(responseSchema ? { responseSchema } : {})
+          }
+        })
+      });
+
+      const rawText = await res.text();
+      let raw;
+      try { raw = JSON.parse(rawText); } catch { raw = { rawText }; }
+
+      if (!res.ok) {
+        const msg = raw?.error?.message || rawText || ('HTTP ' + res.status);
+        errors.push(`${model}: ${msg}`);
+        continue;
+      }
+
+      const text = raw?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+      if (!text) {
+        errors.push(`${model}: 空回應`);
+        continue;
+      }
+      return { text, model, raw };
+    } catch (e) {
+      errors.push(`${model}: ${e.message}`);
+    }
+  }
+
+  throw new Error(errors.slice(-3).join(' | '));
+}
+
+function quickSearch(code, name, el) {
+  document.getElementById('searchInput').value = code;
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  analyzeStock();
+}
+
+function setPeriod(period) {
+  currentPeriod = period;
+  document.querySelectorAll('.time-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+  if (currentAiData && currentStock) runAiAnalysis(currentStock);
+}
+
+async function analyzeStock() {
+  const query = document.getElementById('searchInput').value.trim();
+  if (!query) return;
+
+  if (!getGeminiKey()) {
+    showKeyModal();
+    return;
+  }
+
+  if (refreshTimer) clearInterval(refreshTimer);
+  liveSymbol = null;
+
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  btn.textContent = '載入中...';
+
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="loading"><div class="spinner"></div><div>正在從 Yahoo Finance 取得 ${query} 即時報價...</div></div>`;
+
+  let symbol;
+  if (/^\d{4}$/.test(query.trim())) {
+    symbol = toYahooSymbol(query.trim());
+  } else {
+    symbol = await resolveSymbol(query);
+    if (!symbol) {
+      content.innerHTML = `<div class="error-msg">⚠️ 找不到「${query}」對應的台股代號，請嘗試輸入 4 位數字代號。</div>`;
+      btn.disabled = false; btn.textContent = '分析 ↗';
+      return;
+    }
+  }
+
+  let liveData;
+  try {
+    content.innerHTML = `<div class="loading"><div class="spinner"></div><div>正在從 Yahoo Finance 取得 ${symbol} 即時報價...</div></div>`;
+    liveData = await fetchLivePrice(symbol);
+    currentStock = liveData;
+    liveSymbol = symbol;
+  } catch (err) {
+    try {
+      const twoSymbol = symbol.replace('.TW', '.TWO');
+      liveData = await fetchLivePrice(twoSymbol);
+      currentStock = liveData;
+      liveSymbol = twoSymbol;
+    } catch (err2) {
+      content.innerHTML = `<div class="error-msg">⚠️ 無法從 Yahoo Finance 取得「${symbol}」的資料。<br><br>錯誤：${escapeHtml(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = '分析 ↗';
+      return;
+    }
+  }
+
+  content.innerHTML = `<div class="loading"><div class="spinner"></div><div>Yahoo Finance 報價取得成功，AI 正在分析...</div></div>`;
+  const aiOk = await runAiAnalysis(liveData);
+
+  if (aiOk) startAutoRefresh();
+
+  btn.disabled = false;
+  btn.textContent = '分析 ↗';
+}
+
+
+const ANALYSIS_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    code: { type: "STRING" },
+    name: { type: "STRING" },
+    prediction: { type: "STRING", enum: ["up", "down", "neutral"] },
+    confidence: { type: "NUMBER" },
+    verdictText: { type: "STRING" },
+    fundamentals: {
+      type: "OBJECT",
+      properties: {
+        pe: { type: "STRING" },
+        forwardPe: { type: "STRING" },
+        pb: { type: "STRING" },
+        eps: { type: "STRING" },
+        dividendYield: { type: "STRING" },
+        marketCap: { type: "STRING" }
+      },
+      required: ["pe", "forwardPe", "pb", "eps", "dividendYield", "marketCap"]
+    },
+    technicals: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          value: { type: "STRING" },
+          signal: { type: "STRING", enum: ["up", "down", "neutral"] }
+        },
+        required: ["name", "value", "signal"]
+      }
+    },
+    news: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          source: { type: "STRING" },
+          time: { type: "STRING" }
+        },
+        required: ["title", "source", "time"]
+      }
+    },
+    aiAnalysis: { type: "STRING" },
+    sources: { type: "ARRAY", items: { type: "STRING" } }
+  },
+  required: ["code", "name", "prediction", "confidence", "verdictText", "fundamentals", "technicals", "news", "aiAnalysis", "sources"]
+};
+
+async function resolveSymbol(query) {
+  if (NAME_TO_CODE[query]) return toYahooSymbol(NAME_TO_CODE[query]);
+
+  const prompt = `請把下列台灣股票名稱轉成 4 位數股票代號，只回傳合法 JSON：{"code":"2330"}。名稱：${query}`;
+  try {
+    const { text } = await callGeminiDirect(prompt, 120, null, {
+      type: "OBJECT",
+      properties: { code: { type: "STRING" } },
+      required: ["code"]
+    });
+    const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const data = JSON.parse(match[0]);
+    const code = String(data.code || '').match(/\d{4}/)?.[0];
+    return code ? toYahooSymbol(code) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function runAiAnalysis(liveData) {
+  const content = document.getElementById('content');
+  try {
+    const prompt = `你是台灣股市分析助手。請根據提供的 Yahoo Finance 即時資料，回傳「合法 JSON」且不要加任何其他文字。
+若無法確定數值，請填 "N/A"。文字全部用繁體中文，內容精簡。
+
+資料：
+代號=${liveData.symbol}
+公司=${liveData.shortName}
+現價=${liveData.price}
+漲跌=${liveData.change}
+漲跌幅=${liveData.changePct}%
+開盤=${liveData.open}
+最高=${liveData.high}
+最低=${liveData.low}
+昨收=${liveData.previousClose}
+52週高=${liveData.week52High}
+52週低=${liveData.week52Low}
+交易所=${liveData.exchangeName}
+市場狀態=${liveData.marketState}
+預測區間=${currentPeriod}
+
+請回傳：
+- prediction: up/down/neutral
+- confidence: 0~100 整數
+- verdictText: 看漲/看跌/盤整
+- fundamentals: 6 個欄位都填字串
+- technicals: 9 筆
+- news: 4 筆
+- aiAnalysis: 120~180字
+- sources: 4 筆`;
+
+    const { text, model, raw } = await callGeminiDirect(prompt, 4096, null, ANALYSIS_SCHEMA);
+    const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) {
+        console.error('Gemini 原始回應:', raw, text);
+        throw new Error('AI 回傳格式錯誤，請重試。原始回應：' + cleaned.slice(0, 200));
+      }
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch (e) {
+        console.error('JSON parse failure:', cleaned);
+        throw new Error('AI 回傳 JSON 不完整，請再試一次');
+      }
+    }
+
+    parsed._model = model;
+    currentAiData = parsed;
+    renderDashboard(liveData, parsed);
+    return true;
+  } catch (err) {
+    content.innerHTML = `<div class="error-msg">⚠️ AI 分析失敗：${escapeHtml(err.message)}</div>`;
+    return false;
+  }
+}
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(async () => {
+    if (!liveSymbol || !currentAiData) return;
+    try {
+      const fresh = await fetchLivePrice(liveSymbol);
+      const oldPrice = currentStock?.price;
+      currentStock = fresh;
+      updateLivePriceUI(fresh, oldPrice);
+    } catch (e) {
+      const badge = document.getElementById('live-badge');
+      if (badge) { badge.className = 'live-badge stale'; badge.innerHTML = '<span class="live-dot"></span>更新失敗'; }
+    }
+  }, REFRESH_INTERVAL);
+}
+
+function updateLivePriceUI(data, oldPrice) {
+  const priceEl  = document.getElementById('live-price');
+  const changeEl = document.getElementById('live-change');
+  const timeEl   = document.getElementById('live-time');
+  const badgeEl  = document.getElementById('live-badge');
+
+  if (priceEl) {
+    priceEl.textContent = 'NT$' + formatPrice(data.price);
+    if (oldPrice && data.price !== oldPrice) {
+      const cls = data.price > oldPrice ? 'flash-up' : 'flash-down';
+      priceEl.classList.add(cls);
+      setTimeout(() => priceEl.classList.remove(cls), 800);
+    }
+  }
+  if (changeEl) {
+    const sign = data.change >= 0 ? '+' : '';
+    changeEl.textContent = `${sign}${data.change} (${sign}${data.changePct}%)`;
+    changeEl.className = 'stock-change ' + (data.change >= 0 ? 'change-up' : 'change-down');
+  }
+  if (timeEl) timeEl.textContent = new Date().toLocaleTimeString('zh-TW');
+
+  const setSpan = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = formatPrice(val);
+  };
+  setSpan('live-open-val',  data.open);
+  setSpan('live-high-val',  data.high);
+  setSpan('live-low-val',   data.low);
+  setSpan('live-w52h-val',  data.week52High);
+  setSpan('live-w52l-val',  data.week52Low);
+
+  if (badgeEl) {
+    const state = data.marketState || 'CLOSED';
+    const isLive = state === 'REGULAR';
+    const stateLabel = { REGULAR: '盤中', PRE: '盤前', POST: '盤後', CLOSED: '已收盤' }[state] || state;
+    badgeEl.className = 'live-badge' + (isLive ? '' : ' stale');
+    badgeEl.innerHTML = `<span class="live-dot"></span>Yahoo Finance · ${stateLabel}`;
+  }
+  updateSidebar(data);
+}
+function updateSidebar(data) {
+  const code = data.symbol?.replace(/\.[A-Z]+$/, '');
+  const el = document.getElementById('sbp-' + code);
+  if (!el) return;
+  el.textContent = formatPrice(data.price);
+  el.className = 'sidebar-price ' + (data.change >= 0 ? 'up' : 'down');
+}
+
+function renderDashboard(live, ai) {
+  const isUp = ai.prediction === 'up';
+  const isDown = ai.prediction === 'down';
+  const sign = live.change >= 0 ? '+' : '';
+  const predClass = isUp ? 'up' : isDown ? 'down' : 'neutral';
+  const verdictClass = isUp ? 'verdict-up' : isDown ? 'verdict-down' : 'verdict-neutral';
+  const verdictIcon = isUp ? '↗' : isDown ? '↘' : '→';
+  const conf = ai.confidence || 50;
+  const r = 44, cx = 60, cy = 60;
+  const circ = 2 * Math.PI * r;
+  const dash = (conf / 100) * circ;
+  const strokeColor = isUp ? '#3fb950' : isDown ? '#f85149' : '#f0883e';
+  const periods = ['1日','3日','1週','2週','1個月'];
+  const hist = live.history || [];
+  const sparkSvg = buildSparkline(hist, isUp ? '#3fb950' : '#f85149');
+
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="stock-header">
+      <div>
+        <div class="stock-name-row">
+          <span class="stock-code">${ai.code || live.symbol?.replace(/\.[A-Z]+$/,'')}</span>
+          <span class="stock-name-cn">${escapeHtml(ai.name || live.shortName || '')}</span>
+          ${(() => {
+            const state = live.marketState || 'CLOSED';
+            const isLive = state === 'REGULAR';
+            const label = { REGULAR: '盤中', PRE: '盤前', POST: '盤後', CLOSED: '已收盤' }[state] || state;
+            return `<span id="live-badge" class="live-badge${isLive ? '' : ' stale'}"><span class="live-dot"></span>Yahoo Finance · ${label}</span>`;
+          })()}
+          <button class="refresh-btn" onclick="manualRefresh()">↻ 刷新</button>
+        </div>
+        <div class="price-row">
+          <span class="stock-price" id="live-price">NT$${formatPrice(live.price)}</span>
+          <span class="stock-change ${live.change >= 0 ? 'change-up' : 'change-down'}" id="live-change">${sign}${live.change} (${sign}${live.changePct}%)</span>
+        </div>
+        <div class="price-detail">
+          <div class="price-detail-item">開盤 <span id="live-open-val">${formatPrice(live.open)}</span></div>
+          <div class="price-detail-item">最高 <span id="live-high-val" style="color:#3fb950">${formatPrice(live.high)}</span></div>
+          <div class="price-detail-item">最低 <span id="live-low-val" style="color:#f85149">${formatPrice(live.low)}</span></div>
+          <div class="price-detail-item">52週高 <span id="live-w52h-val">${formatPrice(live.week52High)}</span></div>
+          <div class="price-detail-item">52週低 <span id="live-w52l-val">${formatPrice(live.week52Low)}</span></div>
+        </div>
+        <div class="sparkline-wrap">
+          ${sparkSvg}
+          <span class="auto-refresh-label">自動刷新：每 60 秒 · 最後更新 <span id="live-time">${new Date().toLocaleTimeString('zh-TW')}</span></span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#6e7681;margin-bottom:6px;text-align:right;">預測區間</div>
+        <div class="time-filters">
+          ${periods.map(p => `<button class="time-btn ${p === currentPeriod ? 'active' : ''}" data-period="${p}" onclick="setPeriod('${p}')">${p}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="prediction-card ${predClass}">
+        <div class="confidence-ring">
+          <svg class="confidence-svg" viewBox="0 0 120 120">
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#21262d" stroke-width="8"/>
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${strokeColor}" stroke-width="8"
+              stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"/>
+          </svg>
+          <div class="confidence-text">
+            <span class="confidence-pct" style="color:${strokeColor}">${conf}%</span>
+            <span class="confidence-label">信心值</span>
+          </div>
+        </div>
+        <div class="prediction-period">未來 ${currentPeriod} 預測</div>
+        <div class="prediction-verdict">
+          <span style="font-size:28px;">${verdictIcon}</span>
+          <span class="${verdictClass}">${escapeHtml(ai.verdictText || '盤整')}</span>
+        </div>
+        <div class="prediction-detail">${escapeHtml(ai.code || '')} ${escapeHtml(ai.name || '')} ｜ NT$${formatPrice(live.price)} ${sign}${live.changePct}%</div>
+      </div>
+
+      <div class="ai-panel">
+        <div class="ai-header">
+          <div class="ai-dot"></div>
+          <span class="ai-title">AI 智慧推論</span>
+          <span class="ai-model">${escapeHtml(ai._model || 'gemini')}</span>
+        </div>
+        <div class="ai-content">${formatAnalysis(ai.aiAnalysis)}</div>
+        <div class="ai-sources">
+          ${(ai.sources||[]).map(s => `<span class="source-tag">📊 ${escapeHtml(s)}</span>`).join('')}
+        </div>
+        <div style="font-size:11px;color:#6e7681;margin-top:12px;">${new Date().toLocaleString('zh-TW')}</div>
+      </div>
+    </div>
+
+    <div class="panels-grid">
+      <div class="panel">
+        <div class="panel-title">📋 基本面快照</div>
+        <div class="fund-row"><span class="fund-label">目前股價</span><span class="fund-value live">NT$${formatPrice(live.price)}</span></div>
+        <div class="fund-row"><span class="fund-label">本益比 PE</span><span class="fund-value">${escapeHtml(ai.fundamentals?.pe ?? 'N/A')}</span></div>
+        <div class="fund-row"><span class="fund-label">預估 PE</span><span class="fund-value">${escapeHtml(ai.fundamentals?.forwardPe ?? 'N/A')}</span></div>
+        <div class="fund-row"><span class="fund-label">股價淨值比 PB</span><span class="fund-value">${escapeHtml(ai.fundamentals?.pb ?? 'N/A')}</span></div>
+        <div class="fund-row"><span class="fund-label">EPS (TTM)</span><span class="fund-value">${escapeHtml(ai.fundamentals?.eps ?? 'N/A')}</span></div>
+        <div class="fund-row"><span class="fund-label">殖利率</span><span class="fund-value">${escapeHtml(ai.fundamentals?.dividendYield ?? 'N/A')}%</span></div>
+        <div class="fund-row"><span class="fund-label">市值</span><span class="fund-value">${escapeHtml(ai.fundamentals?.marketCap ?? 'N/A')}</span></div>
+        <div class="fund-row"><span class="fund-label">52 週區間</span><span class="fund-value">${formatPrice(live.week52Low)} ~ ${formatPrice(live.week52High)}</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">📡 技術指標</div>
+        <div class="tech-grid">
+          ${(ai.technicals||[]).map(t => `
+            <div class="tech-item">
+              <div class="tech-name">${escapeHtml(t.name)}</div>
+              <div class="tech-val ${t.signal === 'up' ? 'tech-up' : t.signal === 'down' ? 'tech-down' : 'tech-neutral'}">${escapeHtml(t.value)}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">📰 相關新聞 <span style="font-size:11px;font-weight:400;background:#21262d;padding:2px 8px;border-radius:4px;margin-left:4px;">AI 彙整</span></div>
+      ${(ai.news||[]).map((n,i) => `
+        <div class="news-item">
+          <div class="news-num">${i+1}.</div>
+          <div>
+            <div class="news-title">${escapeHtml(n.title)}</div>
+            <div class="news-meta">${escapeHtml(n.source)} · ${escapeHtml(n.time)}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function manualRefresh() {
+  if (!liveSymbol) return;
+  try {
+    const fresh = await fetchLivePrice(liveSymbol);
+    const old = currentStock?.price;
+    currentStock = fresh;
+    updateLivePriceUI(fresh, old);
+  } catch (e) {
+    const badge = document.getElementById('live-badge');
+    if (badge) { badge.className = 'live-badge stale'; badge.innerHTML = '<span class="live-dot"></span>更新失敗'; }
+  }
+}
+
+function buildSparkline(history, color) {
+  if (!history || history.length < 2) return '';
+  const prices = history.map(h => h.close).filter(Boolean);
+  if (prices.length < 2) return '';
+  const w = 120, h = 32, pad = 2;
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = max - min || 1;
+  const pts = prices.map((p, i) => {
+    const x = pad + (i / (prices.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((p - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg class="sparkline-svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+function formatAnalysis(text) {
+  if (!text) return '<p>暫無分析內容</p>';
+  return escapeHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .split('\n\n')
+    .map(p => `<p>${p.trim()}</p>`)
+    .filter(p => p !== '<p></p>')
+    .join('');
+}
+function escapeHtml(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>
